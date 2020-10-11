@@ -1,35 +1,56 @@
+import { getCustomRepository, getRepository } from 'typeorm';
+
+// import AppError from '../errors/AppError';
+
+import TransactionRepository from '../repositories/TransactionsRepository';
+
 import Transaction from '../models/Transaction';
-import TransactionsRepository from '../repositories/TransactionsRepository';
+import Category from '../models/Category';
 
 interface Request {
   title: string;
-  value: number;
   type: 'income' | 'outcome';
+  value: number;
+  category: string;
 }
 
 class CreateTransactionService {
-  private transactionsRepository: TransactionsRepository;
+  public async execute({
+    title,
+    value,
+    type,
+    category,
+  }: Request): Promise<Transaction> {
+    const transactionRepository = getCustomRepository(TransactionRepository);
+    const categoryRepository = getRepository(Category);
 
-  constructor(transactionRepository: TransactionsRepository) {
-    this.transactionsRepository = transactionRepository;
-  }
-
-  public execute({ title, type, value }: Request): Transaction {
-    if (!['income', 'outcome'].includes(type)) {
-      throw new Error('This type is not able');
-    }
-    const { total } = this.transactionsRepository.getBalance();
+    const { total } = await transactionRepository.getBalance();
 
     if (type === 'outcome' && total < value) {
       throw new Error('You do not have enough balance');
     }
 
-    const transaction = this.transactionsRepository.create({
-      title,
-      type,
-      value,
+    let transactionCategory = await categoryRepository.findOne({
+      where: {
+        title: category,
+      },
     });
 
+    if (!transactionCategory) {
+      transactionCategory = categoryRepository.create({
+        title: category,
+      });
+      await categoryRepository.save(transactionCategory);
+    }
+
+    const transaction = transactionRepository.create({
+      title,
+      value,
+      type,
+      category: transactionCategory,
+    });
+
+    await transactionRepository.save(transaction);
     return transaction;
   }
 }
